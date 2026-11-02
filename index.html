@@ -1452,7 +1452,8 @@ function speakNow(parts){   // parts: [[text, rate, pitch], ...]
   if(!canSpeak||!voiceOn||!window.__ccMaster) return Promise.resolve();
   let done; const pr=new Promise(r=>{ done=r; }); setTimeout(done,16000);
   try{
-    speechSynthesis.cancel(); try{ speechSynthesis.resume(); }catch(e){}
+    let busy=false; try{ busy=speechSynthesis.speaking||speechSynthesis.pending; }catch(e){}
+    if(busy) speechSynthesis.cancel(); try{ speechSynthesis.resume(); }catch(e){}
     const t0=Date.now(), tok=(window.__spTok=(window.__spTok||0)+1);
     const go=()=>{
       if(tok!==window.__spTok) return;
@@ -1468,13 +1469,14 @@ function speakNow(parts){   // parts: [[text, rate, pitch], ...]
           if(v) u.voice=v;
           if(i+1<parts.length&&typeof parts[i+1]==='number'){ let fd=false; const nx=()=>{ if(fd) return; fd=true; run(i+1); }; u.onend=nx; u.onerror=nx; setTimeout(nx,Math.min(9000,700+String(u.text).length*85/Math.max(.5,u.rate||1))); }   /* watchdog: some browsers never fire 'end', so the game must not wait for it */
           else if(i===parts.length-1){ u.onend=done; u.onerror=done; setTimeout(done,Math.min(9000,700+String(u.text).length*85/Math.max(.5,u.rate||1))+1200); }
+          window.__ccGQ=(window.__ccGQ||0)+1; u.onstart=function(){ window.__ccGS=(window.__ccGS||0)+1; }; const oe=u.onerror; u.onerror=function(e){ window.__ccGE=(e&&e.error)||'err'; if(oe) oe(e); };
           speechSynthesis.speak(u);
           if(!(i+1<parts.length&&typeof parts[i+1]==='number')) run(i+1);
         };
         run(0);
       }catch(e){}
     };
-    setTimeout(go,30);
+    setTimeout(go,busy?300:30);   /* WebKit drops a speak() that comes right after cancel() */
   }catch(e){ done(); }
   return pr;
 }
@@ -1509,6 +1511,7 @@ function updateVoiceBtn(){
 }
 function setQuote(t){
   const q=$('#dealerQuote'); if(!q) return;
+  if(introBusy()){ q.classList.remove('show'); q.textContent=''; return; }
   q.classList.toggle('long',String(t).length>60); q.classList.remove('show'); q.textContent='\u201C'+String(t).replace(/\s*\n\s*/g,', ')+'\u201D';
   void q.offsetWidth; q.classList.add('show');
 }
@@ -1517,7 +1520,16 @@ function statusWord(t){
   if(phase==='idle') return ready?'Place bets':'Ready';
   return settled?'Results':'Go';
 }
+let dsTok=0;
+function introBusy(){ var r=document.documentElement; return !!(document.getElementById('fiov')||document.getElementById('rbov')||document.getElementById('introov')||/\b(fiing|rbing|introing)\b/.test(r.className)); }
 function dealerSay(text,why,speech,quote,urgent){
+  /* no talking and no speech-bubble text during the opening show: wait until it is over, then a short pause; only the newest line is said */
+  if(introBusy()){
+    const my=++dsTok, args=arguments;
+    return new Promise(function(res){
+      (function wait(){ if(my!==dsTok){ res(); return; } if(introBusy()){ setTimeout(wait,120); return; } setTimeout(function(){ if(my!==dsTok){ res(); return; } res(dealerSay.apply(null,args)); },900); })();
+    });
+  }
   setQuote(quote||text);
   $('#dealerSay').textContent=statusWord(String(text)); $('#dealerWhy').textContent=why||'';
   const sr=$('#sr'); if(sr) sr.textContent=String(quote||text).replace(/\s*\n\s*/g,', ')+(why?'. '+why:'');
@@ -2600,6 +2612,7 @@ function alignZoneLabels(){
 /* ----- speech queue: lines wait for the previous line to finish, unless they must cut in ----- */
 let spTail=Promise.resolve(), spPending=0, spGen=0;
 function speak(parts,mode){   // mode 'urgent' cuts off whatever is talking; 'optional' is dropped when the dealer is busy
+  if(introBusy()) return Promise.resolve();
   if(!canSpeak||!voiceOn||!window.__ccMaster) return Promise.resolve();
   if(mode==='optional'&&spPending>0) return Promise.resolve();
   let p;
@@ -2902,7 +2915,10 @@ function flyFactPop(){
   popAnim.onfinish=function(){ popAnim=null; factPop.hidden=true; document.body.classList.remove('fpflying'); };
 }
 factPop.addEventListener('click',()=>{ stopFactPop(); const fb=$('#factBtn'); if(fb&&!fb.disabled) fb.click(); });
+let ptWas=false;
 function promptTick(){
+  if(introBusy()){ ptWas=true; setTimeout(promptTick,150); return; }
+  if(ptWas){ ptWas=false; setTimeout(promptTick,900); return; }   /* opening show over: a short pause, then the first prompt */
   const btn=$('#ready'), stg=document.getElementById('stage'); let next=1000;
   const act=phase==='idle'&&!ready&&!document.hidden;
   if(!act){ btn.classList.remove('nudge'); rdyFlip=false; pIdx=0; pCycle=0; stopFactPop(); }
@@ -3175,7 +3191,7 @@ body.phone #howBtn{order:1}body.phone #payBtn{order:2}body.phone #factBtn{order:
         var o=a.createOscillator(), g=a.createGain(), t=a.currentTime; o.type='sine'; o.frequency.setValueAtTime(660,t); o.frequency.exponentialRampToValueAtTime(990,t+.12);
         g.gain.setValueAtTime(.0001,t); g.gain.exponentialRampToValueAtTime(.12,t+.02); g.gain.exponentialRampToValueAtTime(.0001,t+.22); o.connect(g); g.connect(a.destination); o.start(t); o.stop(t+.25); }catch(e){} }
     try{ if(window.speechSynthesis) speechSynthesis.resume(); if(typeof window.__ccSayNow==='function') window.__ccSayNow('Sound on'); }catch(e){}
-    setTimeout(function(){ if(!on) return; var n=0; try{ n=speechSynthesis.getVoices().length; }catch(e){} var st='none'; try{ st=window.__ccAcState(); }catch(e){} toast((window.__ccSpeechOK?'Voice started':'Voice did NOT start ('+(window.__ccSpeechErr||(n?'no sound started':'no voices installed'))+')')+' | voice: '+(window.__ccVoiceName||'-')+' | voices: '+n+' | tries: '+(window.__ccTry||0)+' | speaking:'+(function(){try{return speechSynthesis.speaking+'/'+speechSynthesis.pending+'/'+speechSynthesis.paused}catch(e){return '?'}})()+' | iframe:'+(window.top!==window)+' | audio: '+st+' | build 1102d'); },7000);   /* testing aid: set to remove when the voice works everywhere */
+    var diag=function(){ if(!on) return; var n=0; try{ n=speechSynthesis.getVoices().length; }catch(e){} var st='none'; try{ st=window.__ccAcState(); }catch(e){} toast((window.__ccSpeechOK?'Voice started':'Voice did NOT start ('+(window.__ccSpeechErr||(n?'no sound started':'no voices installed'))+')')+' | voice: '+(window.__ccVoiceName||'-')+' | voices: '+n+' | tries: '+(window.__ccTry||0)+' | speaking:'+(function(){try{return speechSynthesis.speaking+'/'+speechSynthesis.pending+'/'+speechSynthesis.paused}catch(e){return '?'}})()+' | iframe:'+(window.top!==window)+' | game speech q/started: '+(window.__ccGQ||0)+'/'+(window.__ccGS||0)+(window.__ccGE?' err:'+window.__ccGE:'')+' | audio: '+st+' | build 1102f'); }; setTimeout(diag,7000); setTimeout(diag,26000);   /* testing aid: set to remove when the voice works everywhere */
     if(!session()&&!silentEl){ try{ silentEl=document.createElement('audio'); silentEl.setAttribute('playsinline',''); silentEl.loop=true; silentEl.src=SIL; silentEl.volume=0.02; var p=silentEl.play(); if(p&&p.catch) p.catch(function(){ silentEl=null; }); }catch(e){ silentEl=null; } }
     else if(silentEl){ try{ silentEl.play(); }catch(e){} }
   }
