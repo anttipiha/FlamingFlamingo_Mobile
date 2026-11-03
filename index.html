@@ -8,6 +8,12 @@
 body.fpflying #ready .wt{animation:none!important;opacity:0!important}
 @media (prefers-reduced-motion: reduce){#ready.nudge .wt,#ready.hint .wt{animation:none}}
 </style>
+<style id="head-fit">
+/* the title row must never widen the page: the green game area decides the width, the title shrinks to fit inside it */
+body.phone header.top{max-width:100%;contain:inline-size}
+body.phone .brand,body.phone .brand>div{min-width:0;max-width:100%}
+body.phone .brand>div{overflow:hidden}
+</style>
 </head><body>
 <title>Flaming_Mobile_NOW</title>
 <style id="embedded-fonts">
@@ -733,7 +739,7 @@ body.phone .tag{display:block;margin:0;font-size:var(--htg);line-height:1.25;whi
     <div class="brand">
       <svg id="logo" viewBox="-18 -42 36 46" aria-hidden="true"></svg>
       <div>
-        <h1 id="gameName" aria-label="Flaming Flaming Flamingo"><span class="w" aria-hidden="true">Flaming</span> <span class="w" aria-hidden="true">Flaming</span> <span class="w" aria-hidden="true">Flamin<span class="go" id="goTail">go</span></span></h1>
+        <h1 id="gameName" aria-label="FlamingFlamingFlamingo"><span class="w" aria-hidden="true">Flaming</span><span class="w" aria-hidden="true">Flaming</span><span class="w" aria-hidden="true">Flamin<span class="go" id="goTail">go</span></span></h1>
         <p class="tag">Three cards move the flamingo. Bet where it lands.</p>
       </div>
     </div>
